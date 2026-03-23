@@ -24,30 +24,83 @@ class ContentBlockType(models.TextChoices):
 	CTA = "cta", "Call To Action"
 
 
+class CtaStyle(models.TextChoices):
+	PRIMARY = "primary", "Primary"
+	SECONDARY = "secondary", "Secondary"
+	GHOST = "ghost", "Ghost"
+
+
+class CtaTarget(models.TextChoices):
+	SELF = "_self", "Same Tab"
+	BLANK = "_blank", "New Tab"
+
+
 class BaseContent(models.Model):
-	title = models.CharField(max_length=255)
-	description = models.TextField(blank=True)
-	slug = models.SlugField(unique=True)
-	industry = models.CharField(max_length=32, choices=IndustryType.choices)
+	title = models.CharField(
+		max_length=255,
+		help_text="Public title shown on listings and detail pages.",
+	)
+	description = models.TextField(
+		blank=True,
+		help_text="Long-form summary to describe this content item.",
+	)
+	slug = models.SlugField(
+		unique=True,
+		help_text="URL-safe unique identifier, e.g. modern-family-home.",
+	)
+	industry = models.CharField(
+		max_length=32,
+		choices=IndustryType.choices,
+		help_text="Industry type that controls which detail model should be attached.",
+	)
 	status = models.CharField(
 		max_length=16,
 		choices=ContentStatus.choices,
 		default=ContentStatus.DRAFT,
+		help_text="Publishing state of this content.",
 	)
-	publish_at = models.DateTimeField(blank=True, null=True)
-	unpublish_at = models.DateTimeField(blank=True, null=True)
+	publish_at = models.DateTimeField(
+		blank=True,
+		null=True,
+		help_text="When content becomes visible. Required for published status.",
+	)
+	unpublish_at = models.DateTimeField(
+		blank=True,
+		null=True,
+		help_text="Optional end date/time. Must be later than publish date/time.",
+	)
 	owner = models.ForeignKey(
 		settings.AUTH_USER_MODEL,
 		on_delete=models.SET_NULL,
 		related_name="owned_contents",
 		blank=True,
 		null=True,
+		help_text="Optional owner reference. Can be left empty for single-admin workflow.",
 	)
-	excerpt = models.CharField(max_length=500, blank=True)
-	body = models.TextField(blank=True)
-	seo_title = models.CharField(max_length=255, blank=True)
-	seo_description = models.CharField(max_length=500, blank=True)
-	metadata = models.JSONField(default=dict, blank=True)
+	excerpt = models.CharField(
+		max_length=500,
+		blank=True,
+		help_text="Short teaser text for cards and list previews.",
+	)
+	body = models.TextField(
+		blank=True,
+		help_text="Main body content. Can be used together with blocks.",
+	)
+	seo_title = models.CharField(
+		max_length=255,
+		blank=True,
+		help_text="Optional SEO title. Falls back to title when empty.",
+	)
+	seo_description = models.CharField(
+		max_length=500,
+		blank=True,
+		help_text="Optional SEO description for meta tags.",
+	)
+	metadata = models.JSONField(
+		default=dict,
+		blank=True,
+		help_text="Flexible JSON object for extra machine-readable fields.",
+	)
 	created_at = models.DateTimeField(auto_now_add=True)
 	updated_at = models.DateTimeField(auto_now=True)
 
@@ -92,18 +145,91 @@ class BaseContent(models.Model):
 		return f"{self.title} ({self.industry})"
 
 
+class ContentMetaItem(models.Model):
+	content = models.ForeignKey(
+		BaseContent,
+		on_delete=models.CASCADE,
+		related_name="meta_items",
+		help_text="Parent content item for this metadata entry.",
+	)
+	key = models.CharField(
+		max_length=100,
+		help_text="Metadata key, e.g. city, category, listing_type.",
+	)
+	value = models.CharField(
+		max_length=255,
+		help_text="Metadata value as plain text.",
+	)
+
+	class Meta:
+		ordering = ["content_id", "key"]
+		constraints = [
+			models.UniqueConstraint(
+				fields=["content", "key"],
+				name="cms_contentmetaitem_unique_key_per_content",
+			),
+		]
+
+	def __str__(self) -> str:
+		return f"Meta<{self.content.slug}:{self.key}>"
+
+
 class ContentBlock(models.Model):
 	content = models.ForeignKey(
 		BaseContent,
 		on_delete=models.CASCADE,
 		related_name="blocks",
+		help_text="Parent content item for this block.",
 	)
-	block_type = models.CharField(max_length=32, choices=ContentBlockType.choices)
-	title = models.CharField(max_length=255, blank=True)
-	body = models.TextField(blank=True)
-	payload = models.JSONField(default=dict, blank=True)
-	position = models.PositiveIntegerField(default=0)
-	is_active = models.BooleanField(default=True)
+	block_type = models.CharField(
+		max_length=32,
+		choices=ContentBlockType.choices,
+		help_text="Block renderer type used by the frontend.",
+	)
+	title = models.CharField(
+		max_length=255,
+		blank=True,
+		help_text="Optional block heading.",
+	)
+	body = models.TextField(
+		blank=True,
+		help_text="Optional rich text/body copy for this block.",
+	)
+	payload = models.JSONField(
+		default=dict,
+		blank=True,
+		help_text='JSON object for block config, e.g. {"cta_label": "Book now", "cta_href": "/contact"}.',
+	)
+	cta_label = models.CharField(
+		max_length=120,
+		blank=True,
+		help_text="CTA button label. Recommended for CTA block type.",
+	)
+	cta_href = models.CharField(
+		max_length=500,
+		blank=True,
+		help_text="CTA destination URL/path, e.g. /contact.",
+	)
+	cta_style = models.CharField(
+		max_length=20,
+		choices=CtaStyle.choices,
+		default=CtaStyle.PRIMARY,
+		help_text="CTA visual style used by frontend.",
+	)
+	cta_target = models.CharField(
+		max_length=10,
+		choices=CtaTarget.choices,
+		default=CtaTarget.SELF,
+		help_text="Open link in same tab or new tab.",
+	)
+	position = models.PositiveIntegerField(
+		default=0,
+		help_text="Display order within this content item. Must be unique per content.",
+	)
+	is_active = models.BooleanField(
+		default=True,
+		help_text="Turn block visibility on/off without deleting it.",
+	)
 
 	class Meta:
 		ordering = ["content_id", "position", "id"]
@@ -121,6 +247,23 @@ class ContentBlock(models.Model):
 	def clean(self) -> None:
 		if not isinstance(self.payload, dict):
 			raise ValidationError({"payload": "Payload must be a JSON object."})
+		if self.block_type == ContentBlockType.CTA:
+			if not self.cta_label:
+				raise ValidationError({"cta_label": "CTA block requires button label."})
+			if not self.cta_href:
+				raise ValidationError({"cta_href": "CTA block requires destination URL/path."})
+
+	def resolved_payload(self) -> dict:
+		data = dict(self.payload or {})
+		if self.cta_label:
+			data["cta_label"] = self.cta_label
+		if self.cta_href:
+			data["cta_href"] = self.cta_href
+		if self.cta_style:
+			data["cta_style"] = self.cta_style
+		if self.cta_target:
+			data["cta_target"] = self.cta_target
+		return data
 
 	def __str__(self) -> str:
 		return f"Block<{self.content.slug}:{self.block_type}:{self.position}>"
@@ -131,12 +274,28 @@ class ContentImage(models.Model):
 		BaseContent,
 		on_delete=models.CASCADE,
 		related_name="images",
+		help_text="Parent content item for this image.",
 	)
-	image = models.ImageField(upload_to="cms/images/%Y/%m/%d")
-	alt_text = models.CharField(max_length=255)
-	caption = models.CharField(max_length=500, blank=True)
-	sort_order = models.PositiveIntegerField(default=0)
-	is_primary = models.BooleanField(default=False)
+	image = models.ImageField(
+		upload_to="cms/images/%Y/%m/%d",
+		help_text="Upload image file. Stored under media/cms/images/...")
+	alt_text = models.CharField(
+		max_length=255,
+		help_text="Accessibility description of the image.",
+	)
+	caption = models.CharField(
+		max_length=500,
+		blank=True,
+		help_text="Optional caption shown under the image.",
+	)
+	sort_order = models.PositiveIntegerField(
+		default=0,
+		help_text="Display order among images for this content.",
+	)
+	is_primary = models.BooleanField(
+		default=False,
+		help_text="Mark as the main/cover image. Only one primary image is allowed per content.",
+	)
 
 	class Meta:
 		ordering = ["content_id", "sort_order", "id"]
@@ -160,13 +319,37 @@ class RealEstateDetails(models.Model):
 		BaseContent,
 		on_delete=models.CASCADE,
 		related_name="real_estate_details",
+		help_text="Linked base content. Industry must be Real Estate.",
 	)
-	listing_price = models.DecimalField(max_digits=12, decimal_places=2)
-	currency = models.CharField(max_length=3, default="USD")
-	bedrooms = models.PositiveSmallIntegerField(default=0)
-	bathrooms = models.DecimalField(max_digits=4, decimal_places=1, default=Decimal("1.0"))
-	area_sqft = models.PositiveIntegerField(blank=True, null=True)
-	address_line = models.CharField(max_length=255)
+	listing_price = models.DecimalField(
+		max_digits=12,
+		decimal_places=2,
+		help_text="Listing price for the property.",
+	)
+	currency = models.CharField(
+		max_length=3,
+		default="USD",
+		help_text="ISO currency code, e.g. USD.",
+	)
+	bedrooms = models.PositiveSmallIntegerField(
+		default=0,
+		help_text="Number of bedrooms.",
+	)
+	bathrooms = models.DecimalField(
+		max_digits=4,
+		decimal_places=1,
+		default=Decimal("1.0"),
+		help_text="Number of bathrooms. Supports halves, e.g. 2.5.",
+	)
+	area_sqft = models.PositiveIntegerField(
+		blank=True,
+		null=True,
+		help_text="Optional interior area in square feet.",
+	)
+	address_line = models.CharField(
+		max_length=255,
+		help_text="Property street address line.",
+	)
 
 	def clean(self) -> None:
 		if self.content.industry != IndustryType.REAL_ESTATE:
@@ -183,10 +366,22 @@ class ProductDetails(models.Model):
 		BaseContent,
 		on_delete=models.CASCADE,
 		related_name="product_details",
+		help_text="Linked base content. Industry must be Product.",
 	)
-	sku = models.CharField(max_length=100, unique=True)
-	price = models.DecimalField(max_digits=10, decimal_places=2)
-	stock_quantity = models.PositiveIntegerField(default=0)
+	sku = models.CharField(
+		max_length=100,
+		unique=True,
+		help_text="Unique stock-keeping unit identifier.",
+	)
+	price = models.DecimalField(
+		max_digits=10,
+		decimal_places=2,
+		help_text="Product price.",
+	)
+	stock_quantity = models.PositiveIntegerField(
+		default=0,
+		help_text="Current stock quantity available.",
+	)
 
 	def clean(self) -> None:
 		if self.content.industry != IndustryType.PRODUCT:

@@ -9,6 +9,7 @@ from cms.models import (
 	ContentBlock,
 	ContentBlockType,
 	ContentImage,
+	ContentMetaItem,
 	ContentStatus,
 	IndustryType,
 	ProductDetails,
@@ -62,6 +63,44 @@ class IndustryExtensionValidationTests(TestCase):
 
 
 class DynamicContentAndImageTests(TestCase):
+	def test_cta_block_exposes_structured_payload_values(self) -> None:
+		content = BaseContent.objects.create(
+			title="CTA Content",
+			description="CTA content",
+			slug="cta-content",
+			industry=IndustryType.PRODUCT,
+			status=ContentStatus.DRAFT,
+		)
+		block = ContentBlock.objects.create(
+			content=content,
+			block_type=ContentBlockType.CTA,
+			cta_label="Book now",
+			cta_href="/contact",
+		)
+
+		self.assertEqual(
+			block.resolved_payload(),
+			{
+				"cta_label": "Book now",
+				"cta_href": "/contact",
+				"cta_style": "primary",
+				"cta_target": "_self",
+			},
+		)
+
+	def test_content_meta_item_unique_key_per_content(self) -> None:
+		content = BaseContent.objects.create(
+			title="Meta Content",
+			description="Meta content",
+			slug="meta-content",
+			industry=IndustryType.PRODUCT,
+			status=ContentStatus.DRAFT,
+		)
+		ContentMetaItem.objects.create(content=content, key="city", value="New York")
+
+		with self.assertRaises(IntegrityError):
+			ContentMetaItem.objects.create(content=content, key="city", value="Boston")
+
 	def test_content_block_payload_must_be_json_object(self) -> None:
 		content = BaseContent.objects.create(
 			title="Article",
